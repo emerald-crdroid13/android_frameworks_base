@@ -62,17 +62,21 @@ constructor(
     val keyguardSmartspaceViewModel: KeyguardSmartspaceViewModel,
 ) : KeyguardSection() {
     private lateinit var sliceView: KeyguardSliceView
+
+    // Custom clock styles draw their own date, so the slice would only overlap them.
+    private val shouldShowSliceView: Boolean
+        get() = !smartspaceController.isEnabled && !smartspaceController.isCustomClockEnabled
     private var disposableHandle: DisposableHandle? = null
 
     override fun addViews(constraintLayout: ConstraintLayout) {
-        if (smartspaceController.isEnabled) return
+        if (!shouldShowSliceView) return
         sliceView =
             layoutInflater.inflate(R.layout.keyguard_slice_view, null, false) as KeyguardSliceView
         constraintLayout.addView(sliceView)
     }
 
     override fun bindData(constraintLayout: ConstraintLayout) {
-        if (smartspaceController.isEnabled) return
+        if (!shouldShowSliceView) return
         val controller =
             KeyguardSliceViewController(
                 handler,
@@ -99,7 +103,7 @@ constructor(
     }
 
     override fun applyConstraints(constraintSet: ConstraintSet) {
-        if (smartspaceController.isEnabled) return
+        if (!shouldShowSliceView) return
         val dateWeatherPaddingStart = KeyguardSmartspaceViewModel.getDateWeatherStartMargin(context)
         constraintSet.apply {
             connect(
@@ -147,7 +151,7 @@ constructor(
     }
 
     override fun removeViews(constraintLayout: ConstraintLayout) {
-        if (smartspaceController.isEnabled) return
+        if (!shouldShowSliceView) return
         constraintLayout.removeView(R.id.keyguard_slice_view)
     }
 }
