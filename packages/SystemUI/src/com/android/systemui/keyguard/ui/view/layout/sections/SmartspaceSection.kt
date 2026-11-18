@@ -81,6 +81,7 @@ constructor(
     }
 
     override fun addViews(constraintLayout: ConstraintLayout) {
+        keyguardSmartspaceViewModel.refreshSmartspaceEnabled()
         if (!keyguardSmartspaceViewModel.isSmartspaceEnabled) return
 
         smartspaceView =
@@ -323,6 +324,7 @@ constructor(
         val list = listOf(smartspaceView, dateView, dateViewLargeClock)
         list.forEach {
             it?.let {
+                keyguardClockViewModel.burnInLayer?.removeView(it)
                 if (it.parent == constraintLayout) {
                     constraintLayout.removeView(it)
                 }

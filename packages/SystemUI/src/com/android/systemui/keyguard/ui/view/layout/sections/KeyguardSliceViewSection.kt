@@ -64,11 +64,13 @@ constructor(
     private lateinit var sliceView: KeyguardSliceView
 
     // Custom clock styles draw their own date, so the slice would only overlap them.
-    private val shouldShowSliceView: Boolean
-        get() = !smartspaceController.isEnabled && !smartspaceController.isCustomClockEnabled
+    // Snapshot taken in addViews() so that the other callbacks match what was inflated.
+    private var shouldShowSliceView: Boolean = false
     private var disposableHandle: DisposableHandle? = null
 
     override fun addViews(constraintLayout: ConstraintLayout) {
+        shouldShowSliceView =
+            !smartspaceController.isEnabled && !smartspaceController.isCustomClockEnabled
         if (!shouldShowSliceView) return
         sliceView =
             layoutInflater.inflate(R.layout.keyguard_slice_view, null, false) as KeyguardSliceView
@@ -152,6 +154,9 @@ constructor(
 
     override fun removeViews(constraintLayout: ConstraintLayout) {
         if (!shouldShowSliceView) return
+        disposableHandle?.dispose()
+        disposableHandle = null
         constraintLayout.removeView(R.id.keyguard_slice_view)
+        shouldShowSliceView = false
     }
 }

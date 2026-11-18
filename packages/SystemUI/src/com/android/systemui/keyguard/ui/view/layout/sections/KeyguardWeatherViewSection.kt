@@ -40,24 +40,22 @@ constructor(
     val layoutInflater: LayoutInflater,
     val smartspaceController: LockscreenSmartspaceController,
 ) : KeyguardSection() {
-    private lateinit var weatherView: WeatherInfoView
+    private var weatherView: WeatherInfoView? = null
 
     override fun addViews(constraintLayout: ConstraintLayout) {
         if (!smartspaceController.isOmniWeatherEnabled || smartspaceController.isEnabled) return
 
         weatherView =
-            layoutInflater.inflate(R.layout.keyguard_weather_area, null, false) as WeatherInfoView
-        constraintLayout.addView(weatherView)
+            (layoutInflater.inflate(R.layout.keyguard_weather_area, null, false) as WeatherInfoView)
+                .also { constraintLayout.addView(it) }
     }
 
     override fun bindData(constraintLayout: ConstraintLayout) {
-        if (!smartspaceController.isOmniWeatherEnabled || smartspaceController.isEnabled) return
-
-        weatherView.init()
+        weatherView?.init()
     }
 
     override fun applyConstraints(constraintSet: ConstraintSet) {
-        if (!smartspaceController.isOmniWeatherEnabled || smartspaceController.isEnabled) return
+        if (weatherView == null) return
 
         constraintSet.apply {
             connect(
@@ -107,11 +105,10 @@ constructor(
     }
 
     override fun removeViews(constraintLayout: ConstraintLayout) {
-        if (!smartspaceController.isOmniWeatherEnabled || smartspaceController.isEnabled) return
-
-        constraintLayout.findViewById<WeatherInfoView?>(R.id.keyguard_weather_area)?.let { weatherArea ->
+        weatherView?.let { weatherArea ->
             weatherArea.cleanup()
             constraintLayout.removeView(weatherArea)
         }
+        weatherView = null
     }
 }
