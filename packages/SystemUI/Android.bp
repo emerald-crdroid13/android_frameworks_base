@@ -1076,8 +1076,11 @@ systemui_optimized_java_defaults {
                 enabled: true,
                 optimize: true,
                 shrink: true,
-                shrink_resources: true,
-                optimized_shrink_resources: true,
+                // Resource shrinking drops drawables that are referenced only
+                // from code (Resources$NotFoundException on setImageResource),
+                // while the audit cannot prove them dead. Keep code shrinking.
+                shrink_resources: false,
+                optimized_shrink_resources: false,
                 ignore_warnings: false,
                 proguard_compatibility: false,
                 d8_on_eng: true,
