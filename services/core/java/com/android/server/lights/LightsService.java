@@ -72,7 +72,10 @@ public class LightsService extends SystemService {
     static final boolean DEBUG = false;
 
     // The emerald stock light HAL takes a 12-bit backlight level (color & 0xfff) while this prop is
-    // set, otherwise it maps the 8-bit luma of the color to 1..2047 in steps of ~8.
+    // set, otherwise it maps the 8-bit luma of the color to 1..2047 in steps of ~8. The 12-bit level
+    // is the panel DBV, so the whole 1..4095 range is used: 2047 is the factory maximum of 500 nits
+    // (AAL logs "phy:2047/4095" at brightness 1.0) and 2048..4095 is the high brightness mode range
+    // up to 1000 nits, which the framework reaches only with the HBM block of the displayconfig.
     private static final boolean BACKLIGHT_12BIT =
             !SystemProperties.get("ro.miui.ui.version.code").isEmpty();
 
@@ -683,9 +686,10 @@ public class LightsService extends SystemService {
                 int brightnessInt = BrightnessSynchronizer.brightnessFloatToInt(brightness);
                 int color = brightnessInt & 0x000000ff;
                 if (BACKLIGHT_12BIT && mHwLight.type == LightType.BACKLIGHT) {
-                    // Same scale as the 8-bit path (1..2047, 0 = off), in single steps
+                    // Panel DBV scale, 1..4095 in single steps, 0 = off. 2047 is the factory
+                    // maximum of 500 nits, the rest is the high brightness mode range.
                     int level = brightnessInt > 0
-                            ? 1 + Math.round(2046 * MathUtils.constrain(brightness, 0f, 1f))
+                            ? 1 + Math.round(4094 * MathUtils.constrain(brightness, 0f, 1f))
                             : 0;
                     color = 0xff000000 | (color << 16) | level;
                 } else {
