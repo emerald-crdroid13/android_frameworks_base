@@ -27,6 +27,8 @@ import android.annotation.AnyThread;
 import android.content.res.Resources;
 import android.database.ContentObserver;
 import android.hardware.Sensor;
+import android.hardware.SensorEvent;
+import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
 import android.hardware.TriggerEvent;
 import android.hardware.TriggerEventListener;
@@ -539,7 +541,7 @@ public class DozeSensors {
     }
 
     @VisibleForTesting
-    class TriggerSensor extends TriggerEventListener {
+    class TriggerSensor extends TriggerEventListener implements SensorEventListener {
         @NonNull final Sensor[] mSensors; // index = posture, value = sensor
         boolean mConfigured;
         final int mPulseReason;
@@ -748,7 +750,7 @@ public class DozeSensors {
 
             // cancel the previous sensor:
             if (mRegistered) {
-                final boolean rt = mSensorManager.cancelTriggerSensor(this, oldSensor);
+                final boolean rt = unregisterSensor(oldSensor);
                 mDozeLog.traceSensorUnregisterAttempt(oldSensor.toString(), rt, "posture changed");
                 mRegistered = false;
             }
@@ -794,16 +796,39 @@ public class DozeSensors {
             if (!mConfigured || sensor == null) return;
             if (mRequested && !mDisabled && (enabledBySetting() || mIgnoresSetting)) {
                 if (!mRegistered) {
-                    mRegistered = mSensorManager.requestTriggerSensor(this, sensor);
+                    mRegistered = registerSensor(sensor);
                     mDozeLog.traceSensorRegisterAttempt(sensor.toString(), mRegistered);
                 } else {
                     mDozeLog.traceSkipRegisterSensor(sensor.toString());
                 }
             } else if (mRegistered) {
-                final boolean rt = mSensorManager.cancelTriggerSensor(this, sensor);
+                final boolean rt = unregisterSensor(sensor);
                 mDozeLog.traceSensorUnregisterAttempt(sensor.toString(), rt);
                 mRegistered = false;
             }
+        }
+
+        /**
+         * Special-trigger sensors only deliver to an ordinary listener. AOSP's requestTriggerSensor
+         * takes REPORTING_MODE_ONE_SHOT alone (SystemSensorManager.requestTriggerSensorImpl), so a
+         * HAL that marks its trigger sensor REPORTING_MODE_SPECIAL_TRIGGER can never be armed that
+         * way: the stock emerald sensor HAL reports "xiaomi pick up sensor" (33171036) as
+         * special-trigger, and HyperOS listens to it with registerListener.
+         */
+        private boolean registerSensor(Sensor sensor) {
+            if (sensor.getReportingMode() == Sensor.REPORTING_MODE_SPECIAL_TRIGGER) {
+                return mSensorManager.registerListener(this, sensor,
+                        SensorManager.SENSOR_DELAY_NORMAL, 0 /* maxReportLatencyUs */);
+            }
+            return mSensorManager.requestTriggerSensor(this, sensor);
+        }
+
+        private boolean unregisterSensor(Sensor sensor) {
+            if (sensor.getReportingMode() == Sensor.REPORTING_MODE_SPECIAL_TRIGGER) {
+                mSensorManager.unregisterListener(this, sensor);
+                return true;
+            }
+            return mSensorManager.cancelTriggerSensor(this, sensor);
         }
 
         protected boolean enabledBySetting() {
@@ -836,6 +861,29 @@ public class DozeSensors {
         @Override
         @AnyThread
         public void onTrigger(TriggerEvent event) {
+            handleTrigger(event.values);
+        }
+
+        @Override
+        @AnyThread
+        public void onSensorChanged(SensorEvent event) {
+            // A special-trigger sensor reports a state change instead of a single pulse: the stock
+            // pickup sensor sends 1 when the device is picked up and 2 when it settles again, so
+            // only the first one requests a pulse. The listener has to go first, otherwise the
+            // next updateListening() would leave it registered while mRegistered says otherwise.
+            if (event.values == null || event.values.length == 0 || event.values[0] != 1f) {
+                return;
+            }
+            unregisterSensor(event.sensor);
+            mRegistered = false;
+            handleTrigger(event.values);
+        }
+
+        @Override
+        public void onAccuracyChanged(Sensor sensor, int accuracy) {
+        }
+
+        private void handleTrigger(float[] values) {
             final Sensor sensor = mSensors[mPosture];
             mDozeLog.traceSensor(mPulseReason);
             mHandler.post(mWakeLock.wrap(() -> {
@@ -846,12 +894,12 @@ public class DozeSensors {
                 mRegistered = false;
                 float screenX = -1;
                 float screenY = -1;
-                if (mReportsTouchCoordinates && event.values.length >= 2) {
-                    screenX = event.values[0];
-                    screenY = event.values[1];
+                if (mReportsTouchCoordinates && values.length >= 2) {
+                    screenX = values[0];
+                    screenY = values[1];
                 }
                 mSensorCallback.onSensorPulse(mPulseReason, mPerformsProxCheck,
-                        screenX, screenY, event.values);
+                        screenX, screenY, values);
                 if (!mRegistered && mImmediatelyReRegister) {
                     updateListening();
                 }
