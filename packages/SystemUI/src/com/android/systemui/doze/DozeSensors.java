@@ -563,6 +563,10 @@ public class DozeSensors {
         protected boolean mRegistered;
         protected boolean mDisabled;
         protected boolean mIgnoresSetting;
+        // Special-trigger sensors only: a sensor that reports state changes sends several "moved"
+        // events per lift, so it is armed between "settled" and the next "moved" and a burst of
+        // "moved" events requests one pulse.
+        private boolean mArmed = true;
         private @DevicePostureController.DevicePostureInt int mPosture;
 
         TriggerSensor(
@@ -766,6 +770,10 @@ public class DozeSensors {
         public void setListening(boolean listen) {
             if (mRequested == listen) return;
             mRequested = listen;
+            if (listen) {
+                // A new doze session starts with a clean "settled" state.
+                mArmed = true;
+            }
             updateListening();
         }
 
@@ -867,13 +875,25 @@ public class DozeSensors {
         @Override
         @AnyThread
         public void onSensorChanged(SensorEvent event) {
-            // A special-trigger sensor reports a state change instead of a single pulse: the stock
-            // pickup sensor sends 1 when the device is picked up and 2 when it settles again, so
-            // only the first one requests a pulse. The listener has to go first, otherwise the
-            // next updateListening() would leave it registered while mRegistered says otherwise.
-            if (event.values == null || event.values.length == 0 || event.values[0] != 1f) {
+            // A special-trigger sensor reports a state change instead of a single pulse. The stock
+            // pickup sensor sends 1 for "device moved" and 2 for "device settled", several times per
+            // lift: a second 1 that arrives while DOZE_PULSING_WITHOUT_UI is up would make
+            // DozeTriggers switch to the full doze UI (selectiveUiPulsing), so wait for the next 2
+            // before accepting another lift, like the stock FOD icon that stays until the phone is
+            // put down.
+            if (event.values == null || event.values.length == 0) {
                 return;
             }
+            final float value = event.values[0];
+            if (value == 2f) {
+                mArmed = true;
+                return;
+            }
+            if (value != 1f || !mArmed) {
+                return;
+            }
+            mArmed = false;
+            // Keep mRegistered honest for the sensors that are not re-registered right away.
             unregisterSensor(event.sensor);
             mRegistered = false;
             handleTrigger(event.values);
